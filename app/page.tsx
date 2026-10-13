@@ -184,12 +184,15 @@ export default function Dashboard() {
 
   useEffect(() => {
     const fetchInitialData = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('sensory_logs')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(20);
 
+      if (error) {
+        console.error("Lỗi khi tải dữ liệu thời gian thực từ Supabase:", error);
+      }
       if (data) {
         const sorted = data.reverse();
         setLogs(sorted);
@@ -228,12 +231,15 @@ export default function Dashboard() {
   }, [childProfile]);
 
   const fetchFullHistory = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('sensory_logs')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(300);
 
+    if (error) {
+      console.error("Lỗi khi tải lịch sử dữ liệu từ Supabase:", error);
+    }
     if (data) setHistoryLogs(data);
   };
 
