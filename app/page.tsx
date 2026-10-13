@@ -184,17 +184,39 @@ export default function Dashboard() {
 
   useEffect(() => {
     const fetchInitialData = async () => {
-      const { data, error } = await supabase
-        .from('sensory_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(20);
+      let finalData: SensoryLog[] | null = null;
 
-      if (error) {
-        console.error("Lỗi khi tải dữ liệu thời gian thực từ Supabase:", error);
+      try {
+        const { data, error } = await supabase
+          .from('sensory_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (!error && data && data.length > 0) {
+          finalData = data;
+        } else if (error) {
+          console.warn("Supabase client trực tiếp chưa tải được, chuyển sang API backend /api/logs:", error.message);
+        }
+      } catch (clientErr) {
+        console.warn("Ngoại lệ Supabase client, chuyển sang API backend /api/logs");
       }
-      if (data) {
-        const sorted = data.reverse();
+
+      // Nếu client trực tiếp không lấy được, tự động lấy qua API backend /api/logs
+      if (!finalData || finalData.length === 0) {
+        try {
+          const res = await fetch('/api/logs?limit=20');
+          const json = await res.json();
+          if (json.success && json.data && json.data.length > 0) {
+            finalData = json.data;
+          }
+        } catch (apiErr) {
+          console.error("Lỗi khi tải dữ liệu từ /api/logs:", apiErr);
+        }
+      }
+
+      if (finalData && finalData.length > 0) {
+        const sorted = [...finalData].reverse();
         setLogs(sorted);
         setCurrent(sorted[sorted.length - 1] || null);
       }
@@ -231,16 +253,34 @@ export default function Dashboard() {
   }, [childProfile]);
 
   const fetchFullHistory = async () => {
-    const { data, error } = await supabase
-      .from('sensory_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(300);
+    let finalHistory: SensoryLog[] | null = null;
 
-    if (error) {
-      console.error("Lỗi khi tải lịch sử dữ liệu từ Supabase:", error);
+    try {
+      const { data, error } = await supabase
+        .from('sensory_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(300);
+
+      if (!error && data && data.length > 0) {
+        finalHistory = data;
+      }
+    } catch (e) {}
+
+    // Fallback qua /api/logs
+    if (!finalHistory || finalHistory.length === 0) {
+      try {
+        const res = await fetch('/api/logs?limit=300');
+        const json = await res.json();
+        if (json.success && json.data) {
+          finalHistory = json.data;
+        }
+      } catch (apiErr) {
+        console.error("Lỗi tải lịch sử từ /api/logs:", apiErr);
+      }
     }
-    if (data) setHistoryLogs(data);
+
+    if (finalHistory) setHistoryLogs(finalHistory);
   };
 
   useEffect(() => {
@@ -259,7 +299,7 @@ export default function Dashboard() {
       if (data.success) {
         setReportData(data);
       } else {
-        alert("Lỗi tạo báo cáo: " + data.error);
+        alert("Lỗi tạo báo cáo: " + (data.error || data.message || "Không thể tạo báo cáo"));
       }
     } catch (e: any) {
       console.error(e);

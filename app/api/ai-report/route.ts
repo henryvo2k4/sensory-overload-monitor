@@ -1,18 +1,39 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, getSafeSupabaseClient } from '@/lib/supabase';
 
 export async function POST(request: Request) {
   try {
     const { limit = 100, childProfile, baselineBpm } = await request.json();
 
-    const { data: logs, error } = await supabase
+    let { data: logs, error } = await supabase
       .from('sensory_logs')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(limit);
 
+    // Nếu query đầu tiên lỗi hoặc rỗng, thử ngay với Safe Fallback Client
     if (error || !logs || logs.length === 0) {
-      return NextResponse.json({ success: false, message: 'Chưa có đủ dữ liệu lịch sử.' }, { status: 400 });
+      console.warn("ai-report: Default client query failed or empty, retrying with safe client...", error?.message);
+      const safeClient = getSafeSupabaseClient();
+      const retry = await safeClient
+        .from('sensory_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (retry.data && retry.data.length > 0) {
+        logs = retry.data;
+        error = null;
+      }
+    }
+
+    if (error || !logs || logs.length === 0) {
+      console.error("ai-report: Không thể lấy dữ liệu sensory_logs:", error?.message);
+      return NextResponse.json({ 
+        success: false, 
+        message: 'Chưa có đủ dữ liệu lịch sử.',
+        error: error ? error.message : 'Bảng sensory_logs đang rỗng.'
+      }, { status: 400 });
     }
 
     const totalSamples = logs.length;
