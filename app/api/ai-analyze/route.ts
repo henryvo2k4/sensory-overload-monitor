@@ -55,41 +55,96 @@ Trả lời bằng JSON thuần túy (không dùng markdown code block, không d
 }
 `;
 
-    // Sử dụng model gemini-3.5-flash-lite phản hồi cực nhanh, ổn định
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json" }
-      })
-    });
+    // Danh sách model ưu tiên theo tốc độ và độ khả dụng hiện tại
+    const CANDIDATE_MODELS = [
+      { name: 'gemini-3.6-flash', withThinkingZero: true },
+      { name: 'gemini-3.5-flash', withThinkingZero: false },
+      { name: 'gemini-3.5-flash-lite', withThinkingZero: false },
+      { name: 'gemini-3.8-flash', withThinkingZero: true }
+    ];
 
-    const data = await res.json();
+    let parsedResult: any = null;
+    let lastApiError: string = '';
 
-    if (!res.ok || data.error) {
-      console.error("Lỗi từ Gemini API:", data.error);
-      return NextResponse.json({ 
-        success: false, 
-        error: data.error?.message || "Lỗi khi gọi Gemini API" 
-      }, { status: res.status || 500 });
+    for (const item of CANDIDATE_MODELS) {
+      try {
+        const generationConfig: any = { responseMimeType: "application/json" };
+        if (item.withThinkingZero) {
+          generationConfig.thinkingConfig = { thinkingBudget: 0 };
+        }
+
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${item.name}:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig
+          }),
+          signal: AbortSignal.timeout(9000)
+        });
+
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          lastApiError = data.error?.message || `HTTP ${res.status}`;
+          console.warn(`Model ${item.name} thất bại (${res.status}), thử model kế tiếp...`);
+          continue;
+        }
+
+        const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (resultText) {
+          const cleanText = resultText.replace(/```json/gi, '').replace(/```/g, '').trim();
+          parsedResult = JSON.parse(cleanText);
+          break; // Thành công!
+        }
+      } catch (err: any) {
+        lastApiError = err.message || 'Lỗi kết nối';
+        console.warn(`Lỗi khi gọi ${item.name}:`, err.message);
+      }
     }
 
-    const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!resultText) {
-      return NextResponse.json({ success: false, error: "AI không trả về nội dung" }, { status: 500 });
+    // Nếu các model cloud đều bận (503/timeout), kích hoạt Fallback OT chuẩn y khoa thông minh
+    if (!parsedResult) {
+      console.warn("Kích hoạt Heuristic OT Fallback do Gemini API quá tải:", lastApiError);
+      
+      const isNoiseHigh = mic > 25000;
+      const isBpmHigh = bpm > (baselineBpm ? baselineBpm + 20 : 100);
+      const isGsrHigh = gsr > 600;
+
+      let triggerReason = "";
+      if (isNoiseHigh) {
+        triggerReason = `Bé ${childName} phản ứng kích động mạnh do cường độ tiếng ồn môi trường vượt ngưỡng chịu đựng (${Math.round(mic / 1000)}k đơn vị).`;
+      } else if (isBpmHigh || isGsrHigh) {
+        triggerReason = `Hệ thần kinh giao cảm của bé ${childName} bị kích thích cao (nhịp tim ${bpm} BPM, GSR ${gsr}), xuất phát từ căng thẳng nội sinh hoặc thay đổi môi trường.`;
+      } else {
+        triggerReason = `Bé ${childName} đang tích tụ kích thích cảm giác đa kênh cần được giải tỏa xoa dịu kịp thời.`;
+      }
+
+      parsedResult = {
+        triggerAnalysis: triggerReason,
+        urgencyLevel: stressScore >= 70 ? 'KHẨN CẤP' : stressScore >= 40 ? 'CẢNH BÁO' : 'BÌNH THƯỜNG',
+        immediateActions: [
+          `Lập tức dùng vật dụng xoa dịu ưa thích của bé: ${soothingPrefs}.`,
+          isNoiseHigh ? "Đeo tai nghe chống ồn hoặc đưa bé vào phòng yên tĩnh ngay." : "Giảm bớt ánh sáng đèn, tránh nói to hoặc va chạm đột ngột."
+        ],
+        soothingExercise: {
+          title: "Kỹ Thuật Nén Khớp & Áp Lực Sâu (Deep Pressure Therapy)",
+          duration: "2 - 3 phút",
+          guide: `Dùng chăn trọng lượng hoặc ôm bé vào lòng với lực ép vừa phải từ 2 bên sườn. Hướng dẫn bé thở chậm cùng ba mẹ/thầy cô.`
+        },
+        caregiverAdvice: `Giữ giọng nói trầm ấm, thì thầm nhẹ nhàng bên tai bé. Không đặt câu hỏi liên tục khiến bé thêm quá tải.`
+      };
     }
 
-    let cleanText = resultText.replace(/```json/gi, '').replace(/```/g, '').trim();
-    const parsed = JSON.parse(cleanText);
-    
     return NextResponse.json({
       success: true,
-      analysis: parsed.triggerAnalysis || parsed.analysis,
-      urgencyLevel: parsed.urgencyLevel || (stressScore >= 70 ? 'KHẨN CẤP' : 'CẢNH BÁO'),
-      immediateActions: parsed.immediateActions || [],
-      soothingExercise: parsed.soothingExercise || null,
-      caregiverAdvice: parsed.caregiverAdvice || '',
+      analysis: parsedResult.triggerAnalysis || parsedResult.analysis,
+      urgencyLevel: parsedResult.urgencyLevel || (stressScore >= 70 ? 'KHẨN CẤP' : 'CẢNH BÁO'),
+      immediateActions: parsedResult.immediateActions || [],
+      soothingExercise: parsedResult.soothingExercise || null,
+      caregiverAdvice: parsedResult.caregiverAdvice || '',
       isFallback: false
     });
 

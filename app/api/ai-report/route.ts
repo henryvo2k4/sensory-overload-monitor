@@ -111,33 +111,93 @@ Tạo bản Báo cáo Giác quan Toàn diện (Comprehensive Sensory Report) the
 }
 `;
 
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json" }
-      })
-    });
+    // Danh sách model ưu tiên theo tốc độ và độ khả dụng
+    const CANDIDATE_MODELS = [
+      { name: 'gemini-3.6-flash', withThinkingZero: true },
+      { name: 'gemini-3.5-flash', withThinkingZero: false },
+      { name: 'gemini-3.5-flash-lite', withThinkingZero: false },
+      { name: 'gemini-3.8-flash', withThinkingZero: true }
+    ];
 
-    const data = await res.json();
+    let parsedReport: any = null;
+    let lastApiError: string = '';
 
-    if (!res.ok || data.error) {
-      console.error("Lỗi từ Gemini API:", data.error);
-      return NextResponse.json({ 
-        success: false, 
-        error: data.error?.message || "Lỗi khi gọi Gemini API" 
-      }, { status: res.status || 500 });
+    for (const item of CANDIDATE_MODELS) {
+      try {
+        const generationConfig: any = { responseMimeType: "application/json" };
+        if (item.withThinkingZero) {
+          generationConfig.thinkingConfig = { thinkingBudget: 0 };
+        }
+
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${item.name}:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig
+          }),
+          signal: AbortSignal.timeout(12000)
+        });
+
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          lastApiError = data.error?.message || `HTTP ${res.status}`;
+          console.warn(`Report model ${item.name} thất bại (${res.status}), thử model kế tiếp...`);
+          continue;
+        }
+
+        const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (resultText) {
+          const cleanText = resultText.replace(/```json/gi, '').replace(/```/g, '').trim();
+          parsedReport = JSON.parse(cleanText);
+          break; // Thành công!
+        }
+      } catch (err: any) {
+        lastApiError = err.message || 'Lỗi kết nối';
+        console.warn(`Lỗi report khi gọi ${item.name}:`, err.message);
+      }
     }
 
-    const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!resultText) {
-      return NextResponse.json({ success: false, error: "AI không trả về nội dung" }, { status: 500 });
+    // Nếu các model cloud bận, kích hoạt Fallback Báo Cáo Chuyên Môn OT Heuristic
+    if (!parsedReport) {
+      console.warn("Kích hoạt Heuristic OT Report Fallback:", lastApiError);
+
+      const dominantNoise = noiseTriggerPercentage >= 50;
+      parsedReport = {
+        summary: `Qua quan sát ${totalSamples} mốc đo, bé ${childName} trải qua ${overloadEpisodes} giai đoạn quá tải cảm giác (chiếm ${overloadPercentage}% phiên). Nhịp tim trung bình ${avgBpm} BPM (đỉnh ${maxBpm} BPM) phản ánh sự dao động rõ nét giữa các pha bình ổn và căng thẳng thần kinh.`,
+        triggerBreakdown: {
+          primary: dominantNoise ? "Tiếng ồn môi trường đột ngột" : "Kích thích nội sinh & cảm giác tích tụ",
+          noiseImpact: dominantNoise 
+            ? `Tiếng ồn đạt đỉnh ${Math.round(maxMic / 1000)}k đơn vị, chiếm ${noiseTriggerPercentage}% nguyên nhân quá tải.` 
+            : `Độ ồn môi trường tương đối ôn hòa, chỉ chiếm ${noiseTriggerPercentage}% các cơn kích thích.`,
+          internalStressImpact: `Phản xạ da GSR đạt đỉnh ${maxGsr} (trung bình ${avgGsr}), cho thấy hệ thần kinh giao cảm có thời điểm hưng phấn cao.`
+        },
+        sensoryDietPlan: [
+          {
+            area: "Môi trường học tập / Sinh hoạt",
+            action: dominantNoise 
+              ? "Trang bị tấm xốp cách âm góc phòng, hạn chế tối đa tiếng va đập kim loại hoặc thiết bị công suất lớn." 
+              : "Điều chỉnh ánh sáng dịu nhẹ, giữ nhiệt độ phòng thoáng mát dễ chịu."
+          },
+          {
+            area: "Trang bị hỗ trợ giác quan (Sensory Tools)",
+            action: `Ưu tiên sử dụng đồ vật bé ưa thích: ${soothingPrefs}, kết hợp tai nghe giảm ồn khi ra ngoài.`
+          },
+          {
+            area: "Lịch trình xả nén (Sensory Breaks)",
+            action: "Cứ sau mỗi 45 phút học tập hoặc vận động, bố trí 5-10 phút ngồi góc yên tĩnh để tái lập cân bằng."
+          }
+        ],
+        recommendations: [
+          `Khi nhận thấy dấu hiệu sớm (${earlySigns}): Lập tức chủ động tiếp cận, ôm áp lực sâu hoặc cho bé dùng ${soothingPrefs}.`,
+          "Ghi nhận nhật ký cảm xúc thường xuyên để phát hiện quy luật thời gian bé dễ mệt mỏi trong ngày."
+        ]
+      };
     }
 
-    let cleanText = resultText.replace(/```json/gi, '').replace(/```/g, '').trim();
-    const parsedReport = JSON.parse(cleanText);
-    
     return NextResponse.json({
       success: true,
       metrics: { 
