@@ -8,7 +8,7 @@ import {
   Sparkles, History, LayoutDashboard, RefreshCw, X, 
   FileText, BarChart3, CheckCircle2, User, Zap, Smile, HeartPulse,
   Sun, Calendar, CalendarDays, ListFilter, Filter, Clock,
-  ChevronRight, CalendarRange, Eye
+  ChevronRight, CalendarRange, Eye, Phone, Info
 } from 'lucide-react';
 
 const StressChart = dynamic(() => import('@/components/StressChart'), {
@@ -45,7 +45,21 @@ interface ChildProfile {
   name: string;
   age: number;
   sensitivities: string;
+  soothingPreferences: string;
+  earlySigns: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
 }
+
+const DEFAULT_PROFILE: ChildProfile = {
+  name: 'Bé Minh Khang',
+  age: 6,
+  sensitivities: 'Tiếng ồn đột ngột, đèn neon chói, va chạm bất ngờ',
+  soothingPreferences: 'Chăn trọng lượng, nghe nhạc nhẹ/tiếng mưa, ôm áp lực sâu',
+  earlySigns: 'Bịt tai, vỗ tay liên tục (stimming), lắc lư người',
+  emergencyContactName: 'Mẹ Lan',
+  emergencyContactPhone: '0901234567',
+};
 
 interface DaySummary {
   dateStr: string;
@@ -74,12 +88,20 @@ export default function Dashboard() {
   const [selectedDayDetail, setSelectedDayDetail] = useState<DaySummary | null>(null);
 
   // Hồ sơ bệnh nhi/trẻ
-  const [childProfile, setChildProfile] = useState<ChildProfile>({
-    name: 'Bé Minh Khang',
-    age: 6,
-    sensitivities: 'Tiếng ồn đột ngột, đèn neon chói, va chạm bất ngờ',
-  });
+  const [childProfile, setChildProfile] = useState<ChildProfile>(DEFAULT_PROFILE);
   const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // Tự động tải hồ sơ bé từ localStorage khi mở trang
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('sensory_child_profile');
+      if (saved) {
+        setChildProfile((prev) => ({ ...prev, ...JSON.parse(saved) }));
+      }
+    } catch (e) {
+      console.error("Không thể đọc localStorage hồ sơ bé:", e);
+    }
+  }, []);
 
   // Trạng thái Báo động khẩn cấp
   const [showAlertModal, setShowAlertModal] = useState(false);
@@ -93,6 +115,23 @@ export default function Dashboard() {
   // Trạng thái AI Report Lịch sử
   const [reportData, setReportData] = useState<any>(null);
   const [reportLoading, setReportLoading] = useState(false);
+
+  // Tự động tính nhịp tim cơ sở từ các mốc dữ liệu khi bé bình ổn (không cần nhập thủ công)
+  const baselineStats = useMemo(() => {
+    const source = historyLogs.length > 0 ? historyLogs : logs;
+    const calmLogs = source.filter(
+      (l) => l.bpm && l.bpm > 0 && l.stress_score < 40 && l.overload_status !== 'CHƯA ĐEO ĐỒNG HỒ'
+    );
+    if (calmLogs.length === 0) {
+      return { bpm: 75, count: 0, isCalculated: false };
+    }
+    const sum = calmLogs.reduce((acc, cur) => acc + cur.bpm, 0);
+    return {
+      bpm: Math.round(sum / calmLogs.length),
+      count: calmLogs.length,
+      isCalculated: true,
+    };
+  }, [historyLogs, logs]);
 
   // Hàm gọi AI Chẩn đoán
   const executeAiAnalysis = async (targetLog?: SensoryLog) => {
@@ -119,6 +158,7 @@ export default function Dashboard() {
             gsrRising: dataToAnalyze.gsr > 500,
           },
           childProfile,
+          baselineBpm: baselineStats.bpm,
         }),
       });
 
@@ -207,7 +247,7 @@ export default function Dashboard() {
       const res = await fetch('/api/ai-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ limit: 100, childProfile }),
+        body: JSON.stringify({ limit: 100, childProfile, baselineBpm: baselineStats.bpm }),
       });
       const data = await res.json();
       if (data.success) {
@@ -300,18 +340,15 @@ export default function Dashboard() {
       <div className="max-w-6xl mx-auto space-y-6">
 
         {/* Thanh Header Dễ Thương & Trong Trẻo */}
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/80 backdrop-blur-md p-6 rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-slate-100">
-          <div>
+        <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5 bg-white/80 backdrop-blur-md p-6 rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-slate-100">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-sky-100/80 rounded-2xl text-sky-600 shadow-sm">
+              <div className="p-2.5 bg-sky-100/80 rounded-2xl text-sky-600 shadow-sm shrink-0">
                 <Sun className="h-7 w-7" />
               </div>
               <div>
-                <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-800 flex items-center gap-2">
+                <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-800">
                   Sensory Watch
-                  <span className="text-xs px-3 py-1 rounded-full bg-violet-100 text-violet-600 font-semibold border border-violet-200/50">
-                    Bé An Tâm 🧸
-                  </span>
                 </h1>
                 <p className="text-xs text-slate-400 mt-0.5">Theo dõi cảm giác dịu êm & Trợ lý điều hòa cho trẻ</p>
               </div>
@@ -342,49 +379,61 @@ export default function Dashboard() {
                 </span>
               )}
 
+              {/* Huy hiệu nhịp tim cơ sở tự động đo */}
+              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-50 border border-rose-200/80 text-xs text-rose-700 font-semibold shadow-sm" title="Hệ thống tự động tính từ lịch sử lúc bé bình ổn">
+                <Heart className="h-3 w-3 text-rose-500 fill-rose-500" />
+                BPM cơ sở: {baselineStats.isCalculated ? `${baselineStats.bpm} bpm` : '~75 bpm (ước tính)'}
+              </span>
+
+              {childProfile.emergencyContactPhone && (
+                <span className="text-xs text-slate-500 hidden xl:inline bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
+                  📞 {childProfile.emergencyContactName}: {childProfile.emergencyContactPhone}
+                </span>
+              )}
+
               <span className="text-xs text-slate-400 hidden sm:inline bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
                 🌱 Nhạy cảm: {childProfile.sensitivities}
               </span>
             </div>
           </div>
 
-          {/* Thanh Tab Bo Tròn Dạng Viên Thuốc */}
-          <nav className="bg-slate-100/90 p-1.5 rounded-full flex gap-1 border border-slate-200/60 shadow-inner">
+          {/* Thanh Chuyển Tab Phong Cách Segmented Control Hiện Đại */}
+          <nav className="shrink-0 flex items-center p-1.5 bg-slate-100/90 rounded-2xl border border-slate-200/70 shadow-xs">
             <button
               onClick={() => setActiveTab('live')}
-              className={`flex items-center gap-2 px-5 py-2 text-xs md:text-sm font-semibold rounded-full transition-all ${
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold rounded-xl whitespace-nowrap transition-all outline-none focus:outline-none ${
                 activeTab === 'live' 
-                  ? 'bg-white text-sky-600 shadow-[0_2px_10px_rgba(0,0,0,0.06)]' 
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-white text-sky-600 shadow-sm border border-slate-200/60 font-bold' 
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
               }`}
             >
-              <LayoutDashboard className="h-4 w-4" />
-              Giám Sát
+              <LayoutDashboard className="h-4 w-4 shrink-0" />
+              <span>Giám Sát</span>
             </button>
             <button
               onClick={() => setActiveTab('history')}
-              className={`flex items-center gap-2 px-5 py-2 text-xs md:text-sm font-semibold rounded-full transition-all ${
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold rounded-xl whitespace-nowrap transition-all outline-none focus:outline-none ${
                 activeTab === 'history' 
-                  ? 'bg-white text-sky-600 shadow-[0_2px_10px_rgba(0,0,0,0.06)]' 
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-white text-sky-600 shadow-sm border border-slate-200/60 font-bold' 
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
               }`}
             >
-              <History className="h-4 w-4" />
-              Nhật Ký & Lịch
+              <History className="h-4 w-4 shrink-0" />
+              <span>Nhật Ký & Lịch</span>
             </button>
             <button
               onClick={() => {
                 setActiveTab('report');
                 if (!reportData) generateAiReport();
               }}
-              className={`flex items-center gap-2 px-5 py-2 text-xs md:text-sm font-semibold rounded-full transition-all ${
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs md:text-sm font-semibold rounded-xl whitespace-nowrap transition-all outline-none focus:outline-none ${
                 activeTab === 'report' 
-                  ? 'bg-gradient-to-r from-violet-500 to-indigo-500 text-white shadow-md shadow-indigo-200' 
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-white text-sky-600 shadow-sm border border-slate-200/60 font-bold' 
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
               }`}
             >
-              <FileText className="h-4 w-4" />
-              Báo Cáo
+              <FileText className="h-4 w-4 shrink-0" />
+              <span>Báo Cáo</span>
             </button>
           </nav>
         </header>
@@ -1118,6 +1167,34 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Liên hệ khẩn cấp & Đồ làm dịu ưu tiên */}
+            {childProfile.emergencyContactPhone && (
+              <div className="flex items-center justify-between p-3.5 bg-rose-50 border border-rose-200/80 rounded-2xl text-xs">
+                <div>
+                  <span className="text-[10px] text-rose-500 font-bold uppercase tracking-wider block">Người Giám Hộ / Liên Hệ:</span>
+                  <span className="font-bold text-slate-800">{childProfile.emergencyContactName || 'Phụ huynh'}: </span>
+                  <span className="text-slate-600 font-semibold">{childProfile.emergencyContactPhone}</span>
+                </div>
+                <a
+                  href={`tel:${childProfile.emergencyContactPhone}`}
+                  className="px-3.5 py-2 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all text-xs"
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                  Gọi Ngay
+                </a>
+              </div>
+            )}
+
+            {childProfile.soothingPreferences && (
+              <div className="p-3 bg-amber-50/80 border border-amber-200/60 rounded-2xl text-xs text-amber-900 flex items-start gap-2">
+                <span className="text-base shrink-0">🧸</span>
+                <div>
+                  <strong className="text-amber-800 font-bold block">Đồ vật & Biện pháp xoa dịu bé ưa thích:</strong>
+                  <span className="text-amber-950 font-medium">{childProfile.soothingPreferences}</span>
+                </div>
+              </div>
+            )}
+
             {aiReport ? (
               <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
                 <div className="bg-violet-50/80 border border-violet-100 p-3.5 rounded-2xl text-xs text-violet-950">
@@ -1165,56 +1242,130 @@ export default function Dashboard() {
 
       {/* MODAL CẤU HÌNH HỒ SƠ BÉ BO TRÒN */}
       {showProfileModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-xl border border-slate-100">
-            <div className="flex justify-between items-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 md:p-7 max-w-lg w-full space-y-4 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
               <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
                 <User className="h-5 w-5 text-sky-500" />
                 Hồ Sơ Cảm Giác Của Bé
               </h3>
-              <button onClick={() => setShowProfileModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setShowProfileModal(false)} className="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
+            {/* Thẻ hiển thị nhịp tim cơ sở tự động tính từ lịch sử */}
+            <div className="p-3.5 bg-sky-50/80 border border-sky-100 rounded-2xl space-y-1 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-sky-800 flex items-center gap-1.5">
+                  <Heart className="h-3.5 w-3.5 text-rose-500 fill-rose-500" />
+                  Nhịp tim cơ sở (Resting BPM):
+                </span>
+                <span className="font-extrabold text-sky-900 px-2.5 py-0.5 bg-white rounded-full border border-sky-200/60 shadow-xs">
+                  {baselineStats.isCalculated ? `${baselineStats.bpm} BPM` : 'Đang ước tính (~75 BPM)'}
+                </span>
+              </div>
+              <p className="text-[11px] text-sky-600 leading-relaxed">
+                {baselineStats.isCalculated
+                  ? `⚡ Thiết bị tự động tính từ ${baselineStats.count} mốc đo lúc bé bình ổn và đang đeo đồng hồ. Không cần người dùng nhập tay.`
+                  : '⚡ Thiết bị sẽ tự động học và tính toán chỉ số này sau khi có các mốc dữ liệu bình ổn từ đồng hồ.'}
+              </p>
+            </div>
+
             <div className="space-y-3.5 text-xs">
-              <div>
-                <label className="block text-slate-500 mb-1 font-semibold">Tên của bé:</label>
-                <input
-                  type="text"
-                  value={childProfile.name}
-                  onChange={(e) => setChildProfile({ ...childProfile, name: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-800 focus:outline-none focus:border-sky-400"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-600 mb-1 font-semibold">Tên của bé:</label>
+                  <input
+                    type="text"
+                    value={childProfile.name}
+                    onChange={(e) => setChildProfile({ ...childProfile, name: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 focus:outline-none focus:border-sky-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-600 mb-1 font-semibold">Tuổi:</label>
+                  <input
+                    type="number"
+                    value={childProfile.age}
+                    onChange={(e) => setChildProfile({ ...childProfile, age: Number(e.target.value) })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 focus:outline-none focus:border-sky-400"
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="block text-slate-500 mb-1 font-semibold">Tuổi:</label>
-                <input
-                  type="number"
-                  value={childProfile.age}
-                  onChange={(e) => setChildProfile({ ...childProfile, age: Number(e.target.value) })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-800 focus:outline-none focus:border-sky-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-500 mb-1 font-semibold">Điểm nhạy cảm của bé:</label>
+                <label className="block text-slate-600 mb-1 font-semibold">Điểm nhạy cảm giác quan của bé:</label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={childProfile.sensitivities}
                   onChange={(e) => setChildProfile({ ...childProfile, sensitivities: e.target.value })}
-                  placeholder="Ví dụ: Sợ tiếng máy xay, tiếng còi xe, ánh sáng chói..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-800 focus:outline-none focus:border-sky-400"
+                  placeholder="Ví dụ: Tiếng ồn đột ngột, đèn neon chói, va chạm bất ngờ..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 focus:outline-none focus:border-sky-400"
                 />
+              </div>
+
+              <div>
+                <label className="block text-slate-600 mb-1 font-semibold">🧸 Đồ vật & Biện pháp xoa dịu ưa thích:</label>
+                <textarea
+                  rows={2}
+                  value={childProfile.soothingPreferences}
+                  onChange={(e) => setChildProfile({ ...childProfile, soothingPreferences: e.target.value })}
+                  placeholder="Ví dụ: Chăn trọng lượng, nghe tiếng mưa rơi, thú bông squishy, ôm áp lực sâu..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 focus:outline-none focus:border-sky-400"
+                />
+                <span className="text-[11px] text-slate-400">AI sẽ ưu tiên gợi ý các phương pháp/đồ vật này khi bé bị quá tải.</span>
+              </div>
+
+              <div>
+                <label className="block text-slate-600 mb-1 font-semibold">⚡ Dấu hiệu cảnh báo sớm (Stimming/Hành vi):</label>
+                <input
+                  type="text"
+                  value={childProfile.earlySigns}
+                  onChange={(e) => setChildProfile({ ...childProfile, earlySigns: e.target.value })}
+                  placeholder="Ví dụ: Bịt tai, lắc lư người, vỗ tay liên tục (stimming), né tránh ánh nhìn..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 focus:outline-none focus:border-sky-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-100">
+                <div>
+                  <label className="block text-slate-600 mb-1 font-semibold">Người liên hệ khẩn cấp:</label>
+                  <input
+                    type="text"
+                    value={childProfile.emergencyContactName}
+                    onChange={(e) => setChildProfile({ ...childProfile, emergencyContactName: e.target.value })}
+                    placeholder="Ví dụ: Mẹ Lan / Bố Tuấn"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 focus:outline-none focus:border-sky-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-600 mb-1 font-semibold">Số điện thoại khẩn cấp:</label>
+                  <input
+                    type="tel"
+                    value={childProfile.emergencyContactPhone}
+                    onChange={(e) => setChildProfile({ ...childProfile, emergencyContactPhone: e.target.value })}
+                    placeholder="Ví dụ: 0901234567"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 focus:outline-none focus:border-sky-400"
+                  />
+                </div>
               </div>
             </div>
 
             <button
-              onClick={() => setShowProfileModal(false)}
-              className="w-full py-3 bg-gradient-to-r from-sky-400 to-blue-500 hover:from-sky-500 hover:to-blue-600 text-white font-bold rounded-2xl text-xs transition-all shadow-md shadow-sky-100"
+              onClick={() => {
+                try {
+                  localStorage.setItem('sensory_child_profile', JSON.stringify(childProfile));
+                } catch (e) {
+                  console.error(e);
+                }
+                setShowProfileModal(false);
+              }}
+              className="w-full py-3 bg-gradient-to-r from-sky-400 to-blue-500 hover:from-sky-500 hover:to-blue-600 text-white font-bold rounded-2xl text-xs transition-all shadow-md shadow-sky-100 mt-2"
             >
-              Lưu Hồ Sơ Bé
+              Lưu Hồ Sơ Bé & Tự Động Ghi Nhớ
             </button>
           </div>
         </div>

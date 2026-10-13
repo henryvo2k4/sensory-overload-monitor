@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
   try {
-    const { bpm, gsr, mic, stressScore, recentTrends, childProfile } = await request.json();
+    const { bpm, gsr, mic, stressScore, recentTrends, childProfile, baselineBpm } = await request.json();
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
@@ -15,30 +15,36 @@ export async function POST(request: Request) {
     const childName = childProfile?.name || 'Bé';
     const childAge = childProfile?.age ? `${childProfile.age} tuổi` : 'độ tuổi học đường';
     const sensitivities = childProfile?.sensitivities || 'Tiếng ồn đột ngột, kích thích thị giác, không gian đông người';
+    const soothingPrefs = childProfile?.soothingPreferences || 'Chăn trọng lượng, nghe nhạc nhẹ/tiếng mưa, ôm áp lực sâu';
+    const earlySigns = childProfile?.earlySigns || 'Bịt tai, vỗ tay liên tục, lắc lư người';
+    const baseline = baselineBpm ? `${baselineBpm} BPM` : 'Khoảng 75-80 BPM';
 
     const prompt = `
 Bạn là Chuyên gia Điều hòa Giác quan (Sensory Integration Specialist) và Chuyên viên Trị liệu Hoạt động (Occupational Therapist - OT) cho trẻ tự kỷ (ASD) và rối loạn xử lý cảm giác (SPD).
 
 THÔNG TIN BỆNH NHI:
 - Đối tượng: ${childName} (${childAge})
+- Nhịp tim cơ sở tự động đo được khi bình ổn: ${baseline}
 - Nhạy cảm giác quan đã ghi nhận: ${sensitivities}
+- Dấu hiệu cảnh báo sớm thường gặp: ${earlySigns}
+- Phương pháp / Đồ vật làm dịu ưa thích của bé: ${soothingPrefs}
 
 DỮ LIỆU ĐO THỜI GIAN THỰC TỪ ĐỒNG HỒ ĐEO TAY:
-- Nhịp tim hiện tại: ${bpm} BPM
+- Nhịp tim hiện tại: ${bpm} BPM (So với nhịp cơ sở ${baseline})
 - Điện trở dẫn truyền da (GSR - chỉ số đổ mồ hôi & kích hoạt hệ thần kinh giao cảm): ${gsr} (Bình thường: 300-600; Kích động: > 700)
 - Mức ồn môi trường xung quanh (Mic): ${Math.round(mic / 1000)}k đơn vị
 - Điểm quá tải cảm giác (Stress Score): ${stressScore}/100 ${stressScore >= 70 ? '⚠️ (MỨC NGUY HIỂM: NGUY CƠ BÙNG PHÁT MELTDOWN CAO)' : stressScore >= 40 ? '⚡ (MỨC KÍCH ĐỘNG TĂNG CAO)' : '🟢 (MỨC ỔN ĐỊNH)'}
 ${recentTrends ? `- Biến động 3 phút qua: Tiếng ồn tăng đột biến: ${recentTrends.noiseSpike ? 'CÓ' : 'KHÔNG'} | Nhịp tim tăng nhanh: ${recentTrends.bpmRising ? 'CÓ' : 'KHÔNG'} | GSR tăng: ${recentTrends.gsrRising ? 'CÓ' : 'KHÔNG'}` : ''}
 
 YÊU CẦU:
-Hãy phân tích cơ chế thần kinh đang diễn ra và đưa ra hướng dẫn can thiệp tức thời theo chuẩn Trị liệu Hoạt động (OT).
+Hãy phân tích cơ chế thần kinh đang diễn ra và đưa ra hướng dẫn can thiệp tức thời theo chuẩn Trị liệu Hoạt động (OT), ưu tiên vận dụng đúng các đồ vật / phương pháp làm dịu ưa thích của bé (${soothingPrefs}).
 Trả lời bằng JSON thuần túy (không dùng markdown code block, không dấu \`\`\`):
 {
-  "triggerAnalysis": "Nhận định nguyên nhân cốt lõi trong 2 câu ngắn (Xác định rõ do tiếng ồn môi trường, do căng thẳng nội sinh, hay do quá tải giác quan tích tụ).",
+  "triggerAnalysis": "Nhận định nguyên nhân cốt lõi trong 2 câu ngắn (Xác định rõ do tiếng ồn môi trường, do căng thẳng nội sinh so với nhịp cơ sở, hay do quá tải giác quan tích tụ).",
   "urgencyLevel": "${stressScore >= 70 ? 'KHẨN CẤP' : stressScore >= 40 ? 'CẢNH BÁO' : 'BÌNH THƯỜNG'}",
   "immediateActions": [
-    "Hành động dập tắt kích ứng 1 (ví dụ: Đeo tai nghe chống ồn ngay / Di chuyển đến góc yên tĩnh)",
-    "Hành động dập tắt kích ứng 2 (ví dụ: Dùng chăn/áo khoác trọng lượng / Giảm ánh sáng phòng)"
+    "Hành động dập tắt kích ứng 1 (Ưu tiên tận dụng sở thích/vật dụng bé quen dùng: ví dụ ${soothingPrefs})",
+    "Hành động dập tắt kích ứng 2 (ví dụ: Di chuyển đến góc yên tĩnh / Giảm ánh sáng phòng)"
   ],
   "soothingExercise": {
     "title": "Tên bài tập điều hòa (ví dụ: Kỹ thuật Nén Khớp & Áp Lực Sâu / Bài tập Thổi Bong Bóng 4-4 / Bài tập Vuốt Chậm)",

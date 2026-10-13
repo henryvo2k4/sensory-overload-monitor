@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 
 export async function POST(request: Request) {
   try {
-    const { limit = 100, childProfile } = await request.json();
+    const { limit = 100, childProfile, baselineBpm } = await request.json();
 
     const { data: logs, error } = await supabase
       .from('sensory_logs')
@@ -60,12 +60,22 @@ export async function POST(request: Request) {
     }
 
     const childName = childProfile?.name || 'Bé';
+    const childAge = childProfile?.age ? `${childProfile.age} tuổi` : 'độ tuổi học đường';
+    const sensitivities = childProfile?.sensitivities || 'Tiếng ồn đột ngột, kích thích thị giác';
+    const soothingPrefs = childProfile?.soothingPreferences || 'Chăn trọng lượng, nghe nhạc nhẹ/tiếng mưa, ôm áp lực sâu';
+    const earlySigns = childProfile?.earlySigns || 'Bịt tai, vỗ tay liên tục, lắc lư người';
+    const baseline = baselineBpm ? `${baselineBpm} BPM` : 'Khoảng 75-80 BPM';
 
     const prompt = `
 Bạn là Chuyên gia Cao cấp về Điều hòa Giác quan (Sensory Integration) và Can thiệp Trẻ tự kỷ.
-Phân tích dữ liệu lịch sử đo đạc từ thiết bị Sensory Overload Monitor của ${childName}:
+Phân tích dữ liệu lịch sử đo đạc từ thiết bị Sensory Overload Monitor của ${childName} (${childAge}):
+- Hồ sơ giác quan của bé:
+  + Nhịp tim cơ sở tự động đo được khi bình ổn: ${baseline}
+  + Các yếu tố nhạy cảm giác quan: ${sensitivities}
+  + Dấu hiệu cảnh báo sớm: ${earlySigns}
+  + Phương pháp/vật dụng làm dịu ưa thích: ${soothingPrefs}
 - Mẫu quan sát: ${totalSamples} mốc đo gần nhất.
-- Nhịp tim: Trung bình ${avgBpm} BPM, Cực đại ${maxBpm} BPM.
+- Nhịp tim: Trung bình ${avgBpm} BPM (So với cơ sở ${baseline}), Cực đại ${maxBpm} BPM.
 - Phản xạ da (GSR): Trung bình ${avgGsr}, Cực đại ${maxGsr}.
 - Đỉnh tiếng ồn (Mic): ${Math.round(maxMic / 1000)}k đơn vị.
 - Tỷ lệ thời gian ở ngưỡng Quá tải (Stress >= 70%): ${overloadPercentage}%.
