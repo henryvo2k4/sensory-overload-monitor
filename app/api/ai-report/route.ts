@@ -52,12 +52,6 @@ export async function POST(request: Request) {
     const noiseTriggerPercentage = overloadEpisodes > 0 ? Math.round((noiseTriggeredCount / overloadEpisodes) * 100) : 0;
 
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ 
-        success: false, 
-        error: "Chưa cấu hình GEMINI_API_KEY trong file .env.local" 
-      }, { status: 400 });
-    }
 
     const childName = childProfile?.name || 'Bé';
     const childAge = childProfile?.age ? `${childProfile.age} tuổi` : 'độ tuổi học đường';
@@ -122,43 +116,47 @@ Tạo bản Báo cáo Giác quan Toàn diện (Comprehensive Sensory Report) the
     let parsedReport: any = null;
     let lastApiError: string = '';
 
-    for (const item of CANDIDATE_MODELS) {
-      try {
-        const generationConfig: any = { responseMimeType: "application/json" };
-        if (item.withThinkingZero) {
-          generationConfig.thinkingConfig = { thinkingBudget: 0 };
-        }
+    if (apiKey) {
+      for (const item of CANDIDATE_MODELS) {
+        try {
+          const generationConfig: any = { responseMimeType: "application/json" };
+          if (item.withThinkingZero) {
+            generationConfig.thinkingConfig = { thinkingBudget: 0 };
+          }
 
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${item.name}:generateContent?key=${apiKey}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey
-          },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig
-          }),
-          signal: AbortSignal.timeout(12000)
-        });
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${item.name}:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey
+            },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig
+            }),
+            signal: AbortSignal.timeout(12000)
+          });
 
-        const data = await res.json();
-        if (!res.ok || data.error) {
-          lastApiError = data.error?.message || `HTTP ${res.status}`;
-          console.warn(`Report model ${item.name} thất bại (${res.status}), thử model kế tiếp...`);
-          continue;
-        }
+          const data = await res.json();
+          if (!res.ok || data.error) {
+            lastApiError = data.error?.message || `HTTP ${res.status}`;
+            console.warn(`Report model ${item.name} thất bại (${res.status}), thử model kế tiếp...`);
+            continue;
+          }
 
-        const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (resultText) {
-          const cleanText = resultText.replace(/```json/gi, '').replace(/```/g, '').trim();
-          parsedReport = JSON.parse(cleanText);
-          break; // Thành công!
+          const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (resultText) {
+            const cleanText = resultText.replace(/```json/gi, '').replace(/```/g, '').trim();
+            parsedReport = JSON.parse(cleanText);
+            break; // Thành công!
+          }
+        } catch (err: any) {
+          lastApiError = err.message || 'Lỗi kết nối';
+          console.warn(`Lỗi report khi gọi ${item.name}:`, err.message);
         }
-      } catch (err: any) {
-        lastApiError = err.message || 'Lỗi kết nối';
-        console.warn(`Lỗi report khi gọi ${item.name}:`, err.message);
       }
+    } else {
+      console.warn("Chưa cấu hình GEMINI_API_KEY trên Vercel, sử dụng Heuristic OT Report Engine.");
     }
 
     // Nếu các model cloud bận, kích hoạt Fallback Báo Cáo Chuyên Môn OT Heuristic
