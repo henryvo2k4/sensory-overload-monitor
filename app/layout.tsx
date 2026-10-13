@@ -15,6 +15,13 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Sensory Watch - Giám Sát Quá Tải Cảm Giác Cho Trẻ",
   description: "Sensory Overload Monitor & Real-Time AI OT Assistant cho trẻ tự kỷ ASD/SPD",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
+    ],
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({
